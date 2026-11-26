@@ -95,8 +95,18 @@ struct MetadataInput {
   AudioPackFormatData audioPackFormat_data;
 };
 
+/// headphoneVirtualise from ITU-R BS.2076-2
+struct HeadphoneVirtualise {
+  /// render without binaural processing, as a stereo pan (no HRTFs, no room)
+  bool bypass = false;
+  /// direct-to-reverberant ratio in dB (0 to 30); the room part of the BRIRs
+  /// is scaled to reach it. If null, the BRIRs are used as they are.
+  boost::optional<double> DRR;
+};
+
 struct ObjectsInput : public MetadataInput {
   ear::ObjectsTypeMetadata type_metadata;
+  HeadphoneVirtualise headphone_virtualise;
   boost::optional<Time> interpolationLength;
   /// distance behaviour; there is no distance-dependant gain if null
   std::shared_ptr<DistanceBehaviour> distance_behaviour = nullptr;

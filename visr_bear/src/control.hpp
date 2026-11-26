@@ -50,6 +50,8 @@ class Control : public CompositeComponent {
   ParameterInput<pml::MessageQueueProtocol, ADMParameter<ObjectsInput>> metadata_in;
   ParameterOutput<pml::SharedDataProtocol, pml::MatrixParameter<float>> direct_gains_out;
   ParameterOutput<pml::SharedDataProtocol, pml::MatrixParameter<float>> diffuse_gains_out;
+  ParameterOutput<pml::SharedDataProtocol, pml::MatrixParameter<float>> room_gains_out;
+  ParameterOutput<pml::SharedDataProtocol, pml::MatrixParameter<float>> bypass_gains_out;
   ParameterOutput<pml::DoubleBufferingProtocol, pml::VectorParameter<float>> direct_delays_out;
   ParameterOutput<pml::DoubleBufferingProtocol, pml::VectorParameter<float>> static_delays_out;
   ParameterOutput<pml::DoubleBufferingProtocol, pml::ScalarParameter<unsigned int>> brir_index_out;

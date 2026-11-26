@@ -30,7 +30,7 @@ class DSP : public CompositeComponent {
  private:
   rbbl::InterpolationParameterSet initial_brir_interpolants();
   rbbl::FilterRoutingList initial_brir_routings();
-  efl::BasicMatrix<float> initial_brir_filters();
+  efl::BasicMatrix<float> initial_brir_filters(bool room = false);
 
   std::shared_ptr<Panner> panner;
 
@@ -69,5 +69,14 @@ class DSP : public CompositeComponent {
   rcl::FirFilterMatrix hoa_irs;
   rcl::DelayVector hoa_delays;
   rcl::Add add_hoa;
+  // headphoneVirtualise: room-only BRIRs for the DRR difference, stereo bypass
+  PerEarDelay objects_room_path;
+  ParameterInput<pml::SharedDataProtocol, pml::MatrixParameter<float>> room_gains_in;
+  rcl::InterpolatingFirFilterMatrix brirs_room;
+  // interpolants are a message queue (one receiver), so the room BRIRs get their own controller
+  BRIRInterpolationController brir_interpolation_controller_room;
+  rcl::GainMatrix bypass_gains;
+  ParameterInput<pml::SharedDataProtocol, pml::MatrixParameter<float>> bypass_gains_in;
+  rcl::DelayVector bypass_delays;
 };
 }  // namespace bear

@@ -30,6 +30,12 @@ class DirectDiffuseSplit : public AtomicComponent {
   ParameterInput<pml::SharedDataProtocol, MatrixParameter<float>> gains_in;
   ParameterOutput<pml::SharedDataProtocol, MatrixParameter<float>> direct_gains_out;
   ParameterOutput<pml::SharedDataProtocol, MatrixParameter<float>> diffuse_gains_out;
+  /// headphoneVirtualise: rows from GainCalcObjects::hv_out
+  ParameterInput<pml::SharedDataProtocol, MatrixParameter<float>> hv_in;
+  /// direct gains scaled by (room gain - 1), for the room-only BRIR path
+  ParameterOutput<pml::SharedDataProtocol, MatrixParameter<float>> room_gains_out;
+  /// left/right gains of the bypass path
+  ParameterOutput<pml::SharedDataProtocol, MatrixParameter<float>> bypass_gains_out;
 };
 
 }  // namespace bear

@@ -1,4 +1,6 @@
 #include "panner.hpp"
+#include <algorithm>
+#include <cmath>
 
 #include "data_file.hpp"
 #include "utils.hpp"
@@ -137,6 +139,8 @@ Panner::Panner(const std::string &brir_file_name)
   hoa_order_ = ((size_t)std::round(std::sqrt(n_hoa_channels_))) - 1;
   size_t nch_for_order = (hoa_order_ + 1) * (hoa_order_ + 1);
   if (nch_for_order != n_hoa_channels_) throw std::logic_error("bad number of hoa channels");
+
+  split_brirs();
 }
 
 void Panner::calc_objects_gains(const ear::ObjectsTypeMetadata &type_metadata,
@@ -412,6 +416,67 @@ const float *Panner::get_hoa_ir(size_t channel, size_t ear) const
 {
   bear_assert(hoa_irs->stride(2) == 1, "HOA decoder must be stored in C order");
   return &(*hoa_irs)(channel, ear, 0u);
+}
+
+}  // namespace bear
+
+namespace bear {
+
+void Panner::split_brirs()
+{
+  const size_t n = brir_length_, fade = std::max<size_t>(1, (size_t)std::lround(0.001 * fs)),
+               direct = (size_t)std::lround(0.0025 * fs);
+  brirs_room_.assign(n_views_ * n_virtual_loudspeakers_ * 2 * n, 0.0f);
+  double e_direct = 0.0, e_room = 0.0, front_peak = 0.0;
+  for (size_t view = 0; view < n_views_; view++)
+    for (size_t vs = 0; vs < n_virtual_loudspeakers_; vs++)
+      for (size_t ear = 0; ear < 2; ear++) {
+        const float *h = get_brir(view, vs, ear);
+        float *room = &brirs_room_[((view * n_virtual_loudspeakers_ + vs) * 2 + ear) * n];
+        size_t peak = 0;
+        for (size_t i = 1; i < n; i++)
+          if (std::abs(h[i]) > std::abs(h[peak])) peak = i;
+        if (view == 0 && vs == front_loudspeaker_) front_peak += peak / 2.0;
+        const size_t start = peak + direct;
+        for (size_t i = 0; i < n; i++) {
+          double w = i < start ? 0.0 : i >= start + fade ? 1.0 : 0.5 - 0.5 * std::cos(M_PI * (i - start) / fade);
+          room[i] = (float)(h[i] * w);
+          e_room += (double)room[i] * room[i];
+          e_direct += (double)(h[i] - room[i]) * (h[i] - room[i]);
+        }
+      }
+  brir_drr_ = e_room > 0.0 ? 10.0 * std::log10(e_direct / e_room) : 100.0;
+  // whole samples: the bypass path is delayed without interpolation (see DSP)
+  bypass_delay_ = std::round((get_default_direct_delay() + front_peak / fs) * fs) / fs;
+}
+
+const float *Panner::get_brir_room(size_t view, size_t virtual_loudspeaker, size_t ear) const
+{
+  return &brirs_room_[((view * n_virtual_loudspeakers_ + virtual_loudspeaker) * 2 + ear) * brir_length_];
+}
+
+Eigen::Vector4d Panner::calc_headphone_virtualise(const ObjectsInput &input) const
+{
+  Eigen::Vector4d hv(0.0, 0.0, 0.0, 1.0);
+  const HeadphoneVirtualise &h = input.headphone_virtualise;
+  if (h.bypass) {
+    // stereo pan like the Web Audio StereoPannerNode: pan = -2 sin(azimuth), equal power
+    const auto &pos = input.type_metadata.position;
+    double az;
+    if (const auto *p = boost::get<ear::PolarPosition>(&pos))
+      az = p->azimuth;
+    else {
+      const auto &c = boost::get<ear::CartesianPosition>(pos);
+      az = -std::atan2(c.X, c.Y) * 180.0 / M_PI;
+    }
+    const double pan = std::max(-1.0, std::min(1.0, -2.0 * std::sin(az * M_PI / 180.0))),
+                 x = (pan + 1.0) / 2.0, g = input.type_metadata.gain;
+    hv << 0.0, g * std::cos(x * M_PI / 2.0), g * std::sin(x * M_PI / 2.0), 0.0;
+  } else if (h.DRR) {
+    const double drr = std::max(0.0, std::min(30.0, *h.DRR));
+    hv(0) = std::pow(10.0, (brir_drr_ - drr) / 20.0) - 1.0;
+  }
+  return hv;
 }
 
 }  // namespace bear

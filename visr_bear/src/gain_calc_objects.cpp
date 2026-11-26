@@ -19,6 +19,7 @@ GainCalcObjects::GainCalcObjects(const SignalFlowContext &ctx,
       gains_out("gains_out",
                 *this,
                 pml::MatrixParameterConfig(2 * panner->num_gains(), config.num_objects_channels)),
+      hv_out("hv_out", *this, pml::MatrixParameterConfig(4, config.num_objects_channels)),
       listener_in("listener_in", *this, pml::EmptyParameterConfig()),
       temp_direct(panner->num_gains()),
       temp_diffuse(panner->num_gains()),
@@ -37,15 +38,20 @@ size_t GainCalcObjects::to_sample(const Time &t)
 
 GainCalcObjects::Point::Point(size_t n_gains) : direct_cache(n_gains), diffuse_cache(n_gains) {}
 
-void GainCalcObjects::Point::calc_gains(GainCalcObjects &parent, DirectDiffuse<Ref<VectorXd>> gains)
+void GainCalcObjects::Point::calc_gains(GainCalcObjects &parent,
+                                        DirectDiffuse<Ref<VectorXd>> gains,
+                                        Ref<Vector4d> hv)
 {
   if (!cache_valid) {
     adapt_otm(otm, adapted_otm, listener);
     parent.panner->calc_objects_gains(adapted_otm.type_metadata, {direct_cache, diffuse_cache});
+    // bypass is head-locked: use the position before listener adaptation
+    hv_cache = parent.panner->calc_headphone_virtualise(otm);
     cache_valid = true;
   }
   gains.direct = direct_cache;
   gains.diffuse = diffuse_cache;
+  hv = hv_cache;
 }
 
 void GainCalcObjects::Point::set_otm(const ObjectsInput &new_otm)
@@ -97,24 +103,27 @@ void GainCalcObjects::PerObject::set_listener(const ListenerImpl &listener)
 
 void GainCalcObjects::PerObject::calc_gains(GainCalcObjects &parent,
                                             Time t,
-                                            DirectDiffuse<Ref<VectorXd>> gains)
+                                            DirectDiffuse<Ref<VectorXd>> gains,
+                                            Ref<Vector4d> hv)
 {
   if (infinite_block) {
-    b.calc_gains(parent, gains);
+    b.calc_gains(parent, gains, hv);
   } else if (t > last_block_end) {
     gains.direct.setZero();
     gains.diffuse.setZero();
+    hv << 0.0, 0.0, 0.0, 1.0;
   } else if (t >= b.time) {
-    b.calc_gains(parent, gains);
+    b.calc_gains(parent, gains, hv);
   } else if (t >= a.time) {
-    a.calc_gains(parent, {parent.temp_direct_a, parent.temp_diffuse_a});
-    b.calc_gains(parent, {parent.temp_direct_b, parent.temp_diffuse_b});
+    a.calc_gains(parent, {parent.temp_direct_a, parent.temp_diffuse_a}, parent.temp_hv_a);
+    b.calc_gains(parent, {parent.temp_direct_b, parent.temp_diffuse_b}, parent.temp_hv_b);
 
     // t_b - t_a == 0 is handled by previous case
     double p = boost::rational_cast<double>((t - a.time) / (b.time - a.time));
 
     gains.direct = parent.temp_direct_a * (1 - p) + parent.temp_direct_b * p;
     gains.diffuse = parent.temp_diffuse_a * (1 - p) + parent.temp_diffuse_b * p;
+    hv = parent.temp_hv_a * (1 - p) + parent.temp_hv_b * p;
   } else
     throw std::logic_error("block shouldn't have been processed yet");
 }
@@ -136,11 +145,12 @@ void GainCalcObjects::process()
   Time block_end{time().sampleCount() + period(), sample_rate};
 
   for (size_t i = 0; i < num_objects; i++) {
-    per_object_data.at(i).calc_gains(*this, block_end, {temp_direct, temp_diffuse});
+    per_object_data.at(i).calc_gains(*this, block_end, {temp_direct, temp_diffuse}, temp_hv);
     for (size_t j = 0; j < panner->num_gains(); j++) {
       gains_out.data()(j, i) = temp_direct(j);
       gains_out.data()(panner->num_gains() + j, i) = temp_diffuse(j);
     }
+    for (size_t j = 0; j < 4; j++) hv_out.data()(j, i) = temp_hv(j);
   }
 }
 

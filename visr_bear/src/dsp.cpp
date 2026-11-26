@@ -112,7 +112,35 @@ DSP::DSP(const SignalFlowContext &ctx,
               "add_hoa",
               this,
               /* width = */ 2,
-              /* numInputs = */ 2)
+              /* numInputs = */ 4),
+      objects_room_path(ctx,
+                        "objects_room_path",
+                        this,
+                        config.num_objects_channels,
+                        panner->num_virtual_loudspeakers(),
+                        panner->get_default_direct_delay()),
+      room_gains_in("room_gains_in",
+                    *this,
+                    pml::MatrixParameterConfig(panner->num_gains(), config.num_objects_channels)),
+      brirs_room(ctx,
+                 "brirs_room",
+                 this,
+                 /* numberOfInputs = */ 2 * panner->num_virtual_loudspeakers(),
+                 /* numberOfOutputs = */ 2,
+                 /* filterLength = */ panner->brir_length(),
+                 /* maxFilters = */ panner->num_views() * 2 * panner->num_virtual_loudspeakers(),
+                 /* maxRoutings = */ 2 * panner->num_virtual_loudspeakers(),
+                 /* numberOfInterpolants = */ 1,
+                 /* transitionSamples = */ ctx.period(),
+                 /* filters = */ initial_brir_filters(true),
+                 /* initialInterpolants = */ initial_brir_interpolants(),
+                 /* routings = */ initial_brir_routings(),
+                 /* controlInputs = */ rcl::InterpolatingFirFilterMatrix::ControlPortConfig::Interpolants,
+                 /* fftImplementation = */ config.fft_implementation.c_str()),
+      brir_interpolation_controller_room(ctx, "brir_interpolation_controller_room", this, config, panner),
+      bypass_gains(ctx, "bypass_gains", this),
+      bypass_gains_in("bypass_gains_in", *this, pml::MatrixParameterConfig(2, config.num_objects_channels)),
+      bypass_delays(ctx, "bypass_delays", this)
 
 {
   // objects direct path
@@ -202,6 +230,34 @@ DSP::DSP(const SignalFlowContext &ctx,
   audioConnection(hoa_irs.audioPort("out"), hoa_delays.audioPort("in"));
   audioConnection(hoa_delays.audioPort("out"), add_hoa.audioPort("in1"));
 
+  // headphoneVirtualise. DRR: the output is BRIR * x + BRIR_room * y, where y
+  // uses the direct gains scaled by (room gain - 1), so nothing changes if no
+  // object has a DRR. bypass: a plain stereo pan, delayed like the direct sound.
+  audioConnection(objects_in, objects_room_path.audioPort("in"));
+  parameterConnection(room_gains_in, objects_room_path.parameterPort("gains_in"));
+  parameterConnection(direct_delays_in, objects_room_path.parameterPort("delays_in"));
+  audioConnection(objects_room_path.audioPort("out"), brirs_room.audioPort("in"));
+  parameterConnection(brir_index_in, brir_interpolation_controller_room.parameterPort("brir_index_in"));
+  parameterConnection(brir_interpolation_controller_room.parameterPort("interpolants_out"),
+                      brirs_room.parameterPort("interpolantInput"));
+  audioConnection(brirs_room.audioPort("out"), add_hoa.audioPort("in2"));
+  bypass_gains.setup(/* numberOfInputs = */ config.num_objects_channels,
+                     /* numberOfOutputs = */ 2,
+                     /* interpolationSteps = */ period());
+  parameterConnection(bypass_gains_in, bypass_gains.parameterPort("gainInput"));
+  bypass_delays.setup(
+      /* numberOfChannels = */ 2,
+      /* interpolationSteps = */ period(),
+      /* maximumDelaySeconds = */ 1.0,
+      // whole-sample delay without interpolation, so the bypass path stays flat
+      /* interpolationMethod = */ "lagrangeOrder0",
+      /* methodDelayPolicy = */ rcl::DelayVector::MethodDelayPolicy::Add,
+      /* controlInputs = */ rcl::DelayVector::ControlPortConfig::None,
+      /* initialDelaySeconds = */ panner->bypass_delay());
+  audioConnection(objects_in, bypass_gains.audioPort("in"));
+  audioConnection(bypass_gains.audioPort("out"), bypass_delays.audioPort("in"));
+  audioConnection(bypass_delays.audioPort("out"), add_hoa.audioPort("in3"));
+
   audioConnection(add_hoa.audioPort("out"), out);
 }
 
@@ -223,14 +279,15 @@ rbbl::FilterRoutingList DSP::initial_brir_routings()
   return routings;
 }
 
-efl::BasicMatrix<float> DSP::initial_brir_filters()
+efl::BasicMatrix<float> DSP::initial_brir_filters(bool room)
 {
   efl::BasicMatrix<float> filters(panner->num_views() * 2 * panner->num_virtual_loudspeakers(),
                                   panner->brir_length());
   for (size_t view = 0; view < panner->num_views(); view++)
     for (size_t vs = 0; vs < panner->num_virtual_loudspeakers(); vs++)
       for (size_t ear = 0; ear < 2; ear++)
-        filters.setRow(brir_index(view, vs, ear), panner->get_brir(view, vs, ear));
+        filters.setRow(brir_index(view, vs, ear),
+                       room ? panner->get_brir_room(view, vs, ear) : panner->get_brir(view, vs, ear));
 
   return filters;
 }
