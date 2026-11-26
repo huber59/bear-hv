@@ -33,6 +33,8 @@ Top::Top(const SignalFlowContext &ctx, const char *name, CompositeComponent *par
 
   parameterConnection(control.parameterPort("direct_gains_out"), dsp.parameterPort("direct_gains_in"));
   parameterConnection(control.parameterPort("diffuse_gains_out"), dsp.parameterPort("diffuse_gains_in"));
+  parameterConnection(control.parameterPort("room_gains_out"), dsp.parameterPort("room_gains_in"));
+  parameterConnection(control.parameterPort("bypass_gains_out"), dsp.parameterPort("bypass_gains_in"));
   parameterConnection(control.parameterPort("direct_delays_out"), dsp.parameterPort("direct_delays_in"));
   parameterConnection(control.parameterPort("static_delays_out"), dsp.parameterPort("static_delays_in"));
   parameterConnection(control.parameterPort("brir_index_out"), dsp.parameterPort("brir_index_in"));

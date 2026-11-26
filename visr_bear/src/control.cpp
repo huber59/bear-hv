@@ -31,6 +31,10 @@ Control::Control(const SignalFlowContext &ctx,
       diffuse_gains_out("diffuse_gains_out",
                         *this,
                         pml::MatrixParameterConfig(panner->num_gains(), config.num_objects_channels)),
+      room_gains_out("room_gains_out",
+                     *this,
+                     pml::MatrixParameterConfig(panner->num_gains(), config.num_objects_channels)),
+      bypass_gains_out("bypass_gains_out", *this, pml::MatrixParameterConfig(2, config.num_objects_channels)),
       direct_delays_out(
           "direct_delays_out", *this, pml::VectorParameterConfig(2 * config.num_objects_channels)),
       static_delays_out(
@@ -67,6 +71,10 @@ Control::Control(const SignalFlowContext &ctx,
     parameterConnection(gain_calc.parameterPort("gains_out"), direct_diffuse_split.parameterPort("gains_in"));
   parameterConnection(direct_diffuse_split.parameterPort("direct_gains_out"), direct_gains_out);
   parameterConnection(direct_diffuse_split.parameterPort("diffuse_gains_out"), diffuse_gains_out);
+  // headphoneVirtualise
+  parameterConnection(gain_calc.parameterPort("hv_out"), direct_diffuse_split.parameterPort("hv_in"));
+  parameterConnection(direct_diffuse_split.parameterPort("room_gains_out"), room_gains_out);
+  parameterConnection(direct_diffuse_split.parameterPort("bypass_gains_out"), bypass_gains_out);
 
   parameterConnection(gain_calc.parameterPort("gains_out"), direct_delay_calc.parameterPort("gains_in"));
   parameterConnection(direct_delay_calc.parameterPort("direct_delays_out"), direct_delays_out);

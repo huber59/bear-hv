@@ -33,6 +33,8 @@ class GainCalcObjects : public AtomicComponent {
 
   ParameterInput<pml::MessageQueueProtocol, ADMParameter<ObjectsInput>> metadata_in;
   ParameterOutput<pml::SharedDataProtocol, pml::MatrixParameter<SampleType>> gains_out;
+  /// headphoneVirtualise per object, see Panner::calc_headphone_virtualise
+  ParameterOutput<pml::SharedDataProtocol, pml::MatrixParameter<SampleType>> hv_out;
   ParameterInput<pml::DoubleBufferingProtocol, ListenerParameter> listener_in;
 
   size_t to_sample(const Time &t);
@@ -43,6 +45,7 @@ class GainCalcObjects : public AtomicComponent {
   Eigen::VectorXd temp_diffuse_a;
   Eigen::VectorXd temp_direct_b;
   Eigen::VectorXd temp_diffuse_b;
+  Eigen::Vector4d temp_hv, temp_hv_a, temp_hv_b;
 
   /// Point in time with associated type metadata and listener data; this
   /// caches gains, which are invalidated when the listener or type-metadata
@@ -53,7 +56,7 @@ class GainCalcObjects : public AtomicComponent {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     Point(size_t n_gains);
 
-    void calc_gains(GainCalcObjects &parent, DirectDiffuse<Ref<VectorXd>> gains);
+    void calc_gains(GainCalcObjects &parent, DirectDiffuse<Ref<VectorXd>> gains, Ref<Vector4d> hv);
     void set_otm(const ObjectsInput &otm);
     void set_listener(const ListenerImpl &listener);
 
@@ -66,6 +69,7 @@ class GainCalcObjects : public AtomicComponent {
 
     Eigen::VectorXd direct_cache;
     Eigen::VectorXd diffuse_cache;
+    Eigen::Vector4d hv_cache;
     bool cache_valid = false;
   };
 
@@ -77,7 +81,7 @@ class GainCalcObjects : public AtomicComponent {
     PerObject(size_t n_gains);
     void update(const ObjectsInput &block);
     void set_listener(const ListenerImpl &listener);
-    void calc_gains(GainCalcObjects &parent, Time t, DirectDiffuse<Ref<VectorXd>> gains);
+    void calc_gains(GainCalcObjects &parent, Time t, DirectDiffuse<Ref<VectorXd>> gains, Ref<Vector4d> hv);
 
    private:
     // current metadata: interpolation from a to b (both containing a time and

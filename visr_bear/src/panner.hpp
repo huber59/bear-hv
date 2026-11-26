@@ -2,6 +2,7 @@
 #include <Eigen/Core>
 
 #include "ear/ear.hpp"
+#include "bear/api.hpp"
 #include "tensorfile.hpp"
 
 namespace bear {
@@ -105,6 +106,19 @@ class Panner {
   const float *get_hoa_ir(size_t channel, size_t ear) const;
   double hoa_delay() const { return hoa_delay_ / fs; }
 
+  /// headphoneVirtualise: the BRIRs are split in time into a direct part (up
+  /// to 2.5 ms after the peak) and a room part; get_brir_room returns the
+  /// latter, with the same layout as get_brir.
+  const float *get_brir_room(size_t view, size_t virtual_loudspeaker, size_t ear) const;
+  /// direct-to-reverberant ratio of the BRIRs as they are, in dB
+  double brir_drr() const { return brir_drr_; }
+  /// delay of the bypass path in seconds, aligned with the direct sound of the
+  /// front loudspeaker
+  double bypass_delay() const { return bypass_delay_; }
+  /// per-object headphoneVirtualise values: (room gain - 1, bypass gain left,
+  /// bypass gain right, gain of the binaural paths)
+  Eigen::Vector4d calc_headphone_virtualise(const ObjectsInput &input) const;
+
  private:
   double get_real_gain_quick(double *gains,
                              LeftRight<double> direct_delays,
@@ -129,6 +143,10 @@ class Panner {
   size_t n_hoa_channels_;
   size_t hoa_order_;
   double hoa_delay_ = 0.0;
+  void split_brirs();
+  std::vector<float> brirs_room_;
+  double brir_drr_ = 0.0;
+  double bypass_delay_ = 0.0;
   enum class GainCompType { NONE, QUICK } gain_comp_type = GainCompType::NONE;
 
   std::shared_ptr<tensorfile::NDArrayT<float>> views;

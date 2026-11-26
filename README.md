@@ -14,6 +14,25 @@ This repository contains:
 
 This is currently a pre-release, awaiting code to generate the data files from publicly-available data and an EBU tech-doc describing the processing performed by the BEAR.
 
+## headphoneVirtualise (this fork)
+
+This fork adds `headphoneVirtualise` from ITU-R BS.2076-2 for Objects, as
+`ObjectsInput::headphone_virtualise` in the C++ API:
+
+- `bypass`: the object is rendered as a plain stereo pan (equal power,
+  pan = -2 sin(azimuth), clipped), without HRTFs or room, delayed by whole
+  samples so that it lines up with the direct sound of the binaural paths.
+- `DRR`: direct-to-reverberant ratio in dB (0 to 30). When the data file is
+  loaded, each BRIR is split 2.5 ms after its peak (1 ms raised-cosine fade)
+  into a direct and a room part, and the DRR of the set is measured. An
+  object with a DRR additionally feeds a second, room-only BRIR convolver
+  with its direct gains scaled by (g - 1), where g = 10^((DRR_set - DRR) / 20),
+  so its room part reaches the requested ratio while the direct part stays
+  the same. Without a DRR nothing changes.
+
+The room-only path doubles the cost of the BRIR convolution. Diffuse object
+parts are not scaled.
+
 [EBU Tech 3396]: https://tech.ebu.ch/publications/tech3396
 [EAR]: https://github.com/ebu/ebu_adm_renderer
 [libear]: https://github.com/ebu/libear
